@@ -284,6 +284,22 @@ class MarkovChain:
             
         graph.draw(img_path)    
 
+    def get_graph_data(self):
+         
+        graph_data = {
+            'nodes': self.state_names,
+            'edges': []
+        }
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.state_vectors[i][j] != '0': 
+                    graph_data['edges'].append((
+                        self.state_names[i], 
+                        self.state_names[j], 
+                        self.__latextounicode(self.state_vectors[i][j]) #? LaTeXor unicode?
+                    ))
+        return graph_data
+
     def __get_matrix(self):
 
         self.state_matrix = [list(row[self.systems_names]) for _, row in self.data.iterrows()]
@@ -413,7 +429,7 @@ if __name__ == '__main__':
             }
         }
     }
-    config = {'parameters': {'aa': {'uu':'oo'}}, 'transitions': {'aa': 'uu'}}
+    #config = {'parameters': {'aa': {'uu':'oo'}}, 'transitions': {'aa': 'uu'}}
     mc = MarkovChain(data, config, completeness=False, has_consequences=True)
 
     time = 30
@@ -421,3 +437,4 @@ if __name__ == '__main__':
     solution = mc.get_results_by_states(time)
     print(solution)
     mc.draw()
+    print(mc.get_graph_data())
