@@ -251,7 +251,23 @@ class MarkovChain:
 
     def get_results_by_consequences(self, time, initial_conditions = None):
         results = self.__solve(time, initial_conditions)
-        return results['by_consecuences']
+        return results['by_consequences']
+
+    def get_graph_data(self):
+         
+        graph_data = {
+            'nodes': self.state_names,
+            'edges': []
+        }
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.state_vectors[i][j] != '0': 
+                    graph_data['edges'].append((
+                        self.state_names[i], 
+                        self.state_names[j], 
+                        self.__latextounicode(self.state_vectors[i][j]) #? LaTeXor unicode?
+                    ))
+        return graph_data
 
     def draw(self, img_path = None):
         """
@@ -283,22 +299,6 @@ class MarkovChain:
             img_path = f'{dir_path}\\markov.svg'
             
         graph.draw(img_path)    
-
-    def get_graph_data(self):
-         
-        graph_data = {
-            'nodes': self.state_names,
-            'edges': []
-        }
-        for i in range(self.size):
-            for j in range(self.size):
-                if self.state_vectors[i][j] != '0': 
-                    graph_data['edges'].append((
-                        self.state_names[i], 
-                        self.state_names[j], 
-                        self.__latextounicode(self.state_vectors[i][j]) #? LaTeXor unicode?
-                    ))
-        return graph_data
 
     def __get_matrix(self):
 
@@ -378,14 +378,14 @@ class MarkovChain:
             solution = numpy.append(solution, 1. - numpy.sum(solution))
 
         solution_dict = {
-            'by_states': {self.state_names[i]: solution[i] for i in range(self.size)},
+            'by_states': {self.state_names[i]: float(solution[i]) for i in range(self.size)},
             'by_consequences': {}
         }
 
         if self.has_consequences:
             for index, consequence in enumerate(self.consequences):
                 solution_dict['by_consequences'].setdefault(consequence, 0)
-                solution_dict['by_consequences'][consequence] += solution[index]
+                solution_dict['by_consequences'][consequence] += float(solution[index])
         
         return solution_dict
     
@@ -408,7 +408,7 @@ if __name__ == '__main__':
         'parameters': {
             '\\lambda_1': {'value': 0.01, 'color': '#FF1744'},
             '\\lambda_2': {'value': 0.1, 'color': '#F57C00'},
-            '\\lambda_2^-': {'value': 0.001, 'color': '#004D40'}
+            '\\lambda_2^-': {'value': 0.001}
         },
         'transitions': {
             'Active Generator': {
@@ -435,6 +435,8 @@ if __name__ == '__main__':
     time = 30
 
     solution = mc.get_results_by_states(time)
+    solution2 = mc.get_results_by_consequences(time)
     print(solution)
-    mc.draw()
+    print(solution2)
+    #mc.draw()
     print(mc.get_graph_data())
