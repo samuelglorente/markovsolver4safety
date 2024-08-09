@@ -2,6 +2,7 @@ import os
 import numpy
 import pandas
 import odeintw
+# Packages needed for MarkovChain.draw() function
 import unicodeitplus
 import pygraphviz as pgv
 
@@ -20,14 +21,15 @@ class MarkovChain:
 
     """
     
-    def __init__(self, data: dict[str, list[str]] | pandas.DataFrame, config: dict[str, dict[str,list[str]]], 
+    def __init__(self, data: dict[str, list[str]] | pandas.DataFrame, 
+                 model_representation: dict[str, dict[str, dict[str, dict[str, float | str]]]], 
                  completeness: bool = True, has_consequences: bool = False) -> None:
         """
         Parameters
         ----------
         data : dict[str, list[str]] | pandas.DataFrame
             _description_
-        config : dict[str, dict[str,list[str]]]
+        model_representation : dict[str, dict[str, dict[str, dict[str, float | str]]]]
             _description_
         completeness : bool, optional
             _description_, by default True
@@ -41,37 +43,29 @@ class MarkovChain:
         KeyError
             _description_
         """
-        
-        self.data = data
-        
-        if type(config) is not dict:
-            raise TypeError("The config parameter shall be a dictionary.")
-        elif not config.get('parameters'):
-            raise KeyError("The config parameter is set incorrectly. Parameters key is missing.")
-        elif not config.get('transitions'):
-            raise KeyError("The config parameter is set incorrectly. Transitions key is missing.")
-        else:
-            self.parameters = config['parameters']
-            self.transitions = config['transitions']
 
+        self.data = data
+
+        self.model_representation = model_representation
+        self.parameters = {'0': {'value': 0.}}
+        self.__extract_parameters(self.model_representation)
         
         self.completeness = completeness
         self.has_consequences = has_consequences
 
         if self.has_consequences:
-            last_data_col_index = -2
+            last_data_col_index = -1
             self.consequences = self.data.iloc[:, last_data_col_index].to_list()
         else:
-            last_data_col_index = -1
-        
+            last_data_col_index = len(self.data)
         
         self.state_names = self.data.iloc[:, 0].to_list()
         self.systems_names = self.data.columns.to_list()[1:last_data_col_index]
+        self.state_matrix = [list(row[self.systems_names]) for _, row in self.data.iterrows()]
+        self.state_transitions = self.__get_transitions()
+        self.state_vectors = []
 
-        self.state_transitions = []
-        for state_transition in self.data.iloc[:,-1].to_list():
-            self.state_transitions.append(''.join([str(x) for x in state_transition.split(",")]).split())
-
+        
         self.__get_matrix()
 
     @property
@@ -107,56 +101,34 @@ class MarkovChain:
         self._data = data
 
     @property
-    def parameters(self) -> dict[str, dict[str, int | str]]:
-        """_summary_
-
-        _extended_summary_
-
-        Returns
-        -------
-        dict[str, dict[str, int | str]]
-            _description_
-
-        Raises
-        ------
-        TypeError
-            _description_
-        KeyError
-            _description_
-        ValueError
-            _description_
-        """
-
-        return self._parameters
+    def model_representation(self) -> dict[str, dict[str, dict[str, dict[str, float | str]]]]:
+        return self._model_representation
     
-    @parameters.setter
-    def parameters(self, parameters):
-        if type(parameters) is not dict:
-            raise TypeError("The parameters element shall be a dictionary.")
-        else:
-
-            for key in parameters:
-                if not parameters[key].get('value'):
-                    raise KeyError (f"Parameter {key} does not have a designated value.")
-                else:
-                    value = parameters[key].get('value')
-                    if type(value) != float:
-                        raise ValueError (f"Parameter {key} does not have a number format type.")
-            
-            parameters['0'] = {'value': 0.}
-
-        self._parameters = parameters
-
-    @property
-    def transitions(self) -> dict[str, dict[str, dict[str, str]]]:
-        return self._transitions
-    
-    @transitions.setter
-    def transitions(self, transitions):
-        if type(transitions) is not dict:
-            raise TypeError("The transitions element shall be a dictionary.")
+    @model_representation.setter
+    def model_representation(self, model_representation):
+        if type(model_representation) is not dict:
+            raise TypeError("The model representation shall be a dictionary.")
         
-        self._transitions = transitions
+        def __check_modelrepresentation(d, loop = False, parent_key = None, middle_key = None):
+            for key, value in d.items():
+                if loop is False:
+                    parent_key = key
+                if isinstance(value, dict):
+                    if 'value' in value:
+                        if not isinstance(value['value'], float):
+                            print(f"Error: The value of 'value' in {key} is not a float. Trying to convert it to float...")
+                            try:
+                                value['value'] = float(value['value'])
+                                print(f"{value['value']} is now a float.")
+                            except:
+                                raise ValueError(f"{value['value']} cannot be converted to float.")
+                        if 'symbol' not in value:
+                            raise ValueError(f"Error: There is no 'symbol' parameter in {parent_key}:{middle_key}:{key}, and one has to be assigned.")
+                    __check_modelrepresentation(value, loop = True, parent_key = parent_key, middle_key = key)
+
+        __check_modelrepresentation(model_representation)
+
+        self._model_representation = model_representation
 
     @property
     def completeness(self):
@@ -265,7 +237,7 @@ class MarkovChain:
                     graph_data['edges'].append((
                         self.state_names[i], 
                         self.state_names[j], 
-                        self.__latextounicode(self.state_vectors[i][j]) #? LaTeXor unicode?
+                        self.state_vectors[i][j]
                     ))
         return graph_data
 
@@ -283,7 +255,7 @@ class MarkovChain:
         for i in range(self.size):
             for j in range(self.size):
                 if self.state_vectors[i][j] != '0': 
-                    prob = self.__latextounicode(self.state_vectors[i][j])
+                    prob = unicodeitplus.replace(self.state_vectors[i][j])
                     graph.add_edge(
                         self.state_names[i], 
                         self.state_names[j], 
@@ -298,13 +270,56 @@ class MarkovChain:
             dir_path = os.path.dirname(os.path.abspath(__file__))
             img_path = f'{dir_path}\\markov.svg'
             
-        graph.draw(img_path)    
+        graph.draw(img_path)
+
+    def __extract_parameters(self, data):
+        for _, value in data.items():
+            if isinstance(value, dict):
+                if 'symbol' in value and 'value' in value:
+                    symbol = value['symbol']
+                    self.parameters[symbol] = {k: v for k, v in value.items() if k != 'symbol'}
+                self.__extract_parameters(value)
+
+    def __get_transitions(self):
+        transitions = []
+        n_states = len(self.state_matrix)
+
+        for i in range(n_states):
+            local_transitions = []
+            for j in range(n_states):
+                if i != j:
+                    if self.__check_transition([i, j]):
+                        local_transitions.append(self.state_names[j])
+            transitions.append(local_transitions)
+        return transitions
+    
+    def __check_transition(self, indexes):
+        n_systems = len(self.systems_names)
+        i = indexes[0]
+        j = indexes[1]
+
+        transition_possible = True
+        transition_accomplished = []
+        for k in range(n_systems):
+            from_state = self.model_representation[self.systems_names[k]].get(self.state_matrix[i][k])
+            if from_state is not None:
+                to_state = from_state.get(self.state_matrix[j][k])
+                if to_state is not None:
+                    if to_state != {}:
+                        transition_accomplished.append(True)
+                    else:
+                        transition_accomplished.append(False)
+                else:
+                    transition_accomplished.append(False)
+                    transition_possible = False
+        # The following reduction of transition_accomplished does not consider simultaneous failures.
+        # This has to be developed with some more logic behind.        
+        transition_accomplished = transition_accomplished.count(True) == 1 and transition_possible
+
+        return transition_accomplished
 
     def __get_matrix(self):
 
-        self.state_matrix = [list(row[self.systems_names]) for _, row in self.data.iterrows()]
-
-        self.state_vectors = []
         for index, state_transition in enumerate(self.state_transitions):
             local_state = ['0'] * self.size
             for transition in state_transition:
@@ -312,8 +327,9 @@ class MarkovChain:
                 col = 0
                 for from_state, to_state in zip(self.state_matrix[index], self.state_matrix[transition_index]):
                     if from_state != to_state:
-                        if self.transitions[self.systems_names[col]][from_state]['To'] == to_state:
-                            local_state[transition_index] = self.transitions[self.systems_names[col]][from_state]['How']
+                        transition_result = self.model_representation[self.systems_names[col]][from_state].get(to_state)
+                        if transition_result is not None and transition_result != {}:
+                            local_state[transition_index] = transition_result['symbol']
                     col += 1
             self.state_vectors.append(local_state)
         
@@ -367,12 +383,10 @@ class MarkovChain:
     
     def __solve(self, time, initial_conditions = None):
         
-        self.time = time
         if initial_conditions is None:
             initial_conditions = numpy.array([1] + [0] * (self.size - 1))
-        self.initial_conditions = initial_conditions
 
-        solution = odeintw.odeintw(self.__psys, self.initial_conditions, self.time, args=(self.matrix,))[-1]
+        solution = odeintw.odeintw(self.__psys, initial_conditions, time, args=(self.matrix,))[-1]
 
         if self.completeness:
             solution = numpy.append(solution, 1. - numpy.sum(solution))
@@ -388,10 +402,6 @@ class MarkovChain:
                 solution_dict['by_consequences'][consequence] += float(solution[index])
         
         return solution_dict
-    
-    @staticmethod
-    def __latextounicode(latex_text):
-        return unicodeitplus.replace(latex_text)
 
 
 if __name__ == '__main__':
@@ -400,43 +410,43 @@ if __name__ == '__main__':
     "State": ["1", "2", "3", "4"],
     "Active Generator": ["Operating", "Failed", "Operating", "Failed"],
     "Standby Generator": ["Standby", "Operating", "Failed", "Failed"],
-    "Consequence": ["Nominal Operation", "No Redundancy", "No Redundancy", "No Operation"],
-    "Transitions": ["2, 3", "4", "4", ""]
+    "Consequence": ["Nominal Operation", "No Redundancy", "No Redundancy", "No Operation"]
     }
-    
-    config = {
-        'parameters': {
-            '\\lambda_1': {'value': 0.01, 'color': '#FF1744'},
-            '\\lambda_2': {'value': 0.1, 'color': '#F57C00'},
-            '\\lambda_2^-': {'value': 0.001}
-        },
-        'transitions': {
-            'Active Generator': {
-                'Operating': {
-                    'To': 'Failed',
-                    'How': '\\lambda_1'
-                }
+ 
+    model_representation = {
+        'Active Generator': {
+            'Operating': {
+                'Failed': {'value': 0.01, 'color': '#FF1744', 'symbol':  '\\lambda_1'},
+                'Operating': {}
             },
-            'Standby Generator': {
-                'Standby': {
-                    'To': 'Failed',
-                    'How': '\\lambda_2^-'
-                },
-                'Operating': {
-                    'To': 'Failed',
-                    'How': '\\lambda_2'
-                }
+            'Failed': {
+                'Failed': {}
+            }
+        },
+        'Standby Generator': {
+            'Standby': {
+                'Failed': {'value': 0.001, 'symbol': '\\lambda_2^-'},
+                'Operating': {},
+                'Standby': {}
+            },
+            'Operating': {
+                'Failed': {'value': 0.1, 'color': '#F57C00', 'symbol': '\\lambda_2'},
+                'Operating': {}
+            },
+            'Failed': {
+                'Failed': {}
             }
         }
     }
-    #config = {'parameters': {'aa': {'uu':'oo'}}, 'transitions': {'aa': 'uu'}}
-    mc = MarkovChain(data, config, completeness=False, has_consequences=True)
-
+    
+    mc = MarkovChain(data, model_representation, completeness=False, has_consequences=True)
     time = 30
 
     solution = mc.get_results_by_states(time)
     solution2 = mc.get_results_by_consequences(time)
+    print(solution2['Nominal Operation'] + solution2['No Redundancy'])
     print(solution)
     print(solution2)
     #mc.draw()
     print(mc.get_graph_data())
+    
