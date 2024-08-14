@@ -2,6 +2,7 @@ import os
 import numpy
 import pandas
 import odeintw
+# Packages only needed for MarkovChain.draw() function (optional)
 import unicodeitplus
 import pygraphviz as pgv
 
@@ -20,14 +21,15 @@ class MarkovChain:
 
     """
     
-    def __init__(self, data: dict[str, list[str]] | pandas.DataFrame, config: dict[str, dict[str,list[str]]], 
+    def __init__(self, data: dict[str, list[str]] | pandas.DataFrame, 
+                 model_representation: dict[str, dict[str, dict[str, dict[str, float | str]]]], 
                  completeness: bool = True, has_consequences: bool = False) -> None:
         """
         Parameters
         ----------
         data : dict[str, list[str]] | pandas.DataFrame
             _description_
-        config : dict[str, dict[str,list[str]]]
+        model_representation : dict[str, dict[str, dict[str, dict[str, float | str]]]]
             _description_
         completeness : bool, optional
             _description_, by default True
@@ -41,37 +43,27 @@ class MarkovChain:
         KeyError
             _description_
         """
-        
-        self.data = data
-        
-        if type(config) is not dict:
-            raise TypeError("The config parameter shall be a dictionary.")
-        elif not config.get('parameters'):
-            raise KeyError("The config parameter is set incorrectly. Parameters key is missing.")
-        elif not config.get('transitions'):
-            raise KeyError("The config parameter is set incorrectly. Transitions key is missing.")
-        else:
-            self.parameters = config['parameters']
-            self.transitions = config['transitions']
 
+        self.data = data
+
+        self.model_representation = model_representation
+        self.parameters = {'0': {'value': 0.}}
+        self.__extract_parameters(self.model_representation)
         
         self.completeness = completeness
         self.has_consequences = has_consequences
 
         if self.has_consequences:
-            last_data_col_index = -2
+            last_data_col_index = -1
             self.consequences = self.data.iloc[:, last_data_col_index].to_list()
         else:
-            last_data_col_index = -1
-        
+            last_data_col_index = len(self.data)
         
         self.state_names = self.data.iloc[:, 0].to_list()
         self.systems_names = self.data.columns.to_list()[1:last_data_col_index]
-
-        self.state_transitions = []
-        for state_transition in self.data.iloc[:,-1].to_list():
-            self.state_transitions.append(''.join([str(x) for x in state_transition.split(",")]).split())
-
+        self.state_matrix = [list(row[self.systems_names]) for _, row in self.data.iterrows()]
+        self.state_vectors = []
+        
         self.__get_matrix()
 
     @property
@@ -107,56 +99,71 @@ class MarkovChain:
         self._data = data
 
     @property
-    def parameters(self) -> dict[str, dict[str, int | str]]:
-        """_summary_
-
-        _extended_summary_
-
-        Returns
-        -------
-        dict[str, dict[str, int | str]]
-            _description_
-
-        Raises
-        ------
-        TypeError
-            _description_
-        KeyError
-            _description_
-        ValueError
-            _description_
-        """
-
-        return self._parameters
+    def model_representation(self) -> dict[str, dict[str, dict[str, dict[str, float | str]]]]:
+        return self._model_representation
     
-    @parameters.setter
-    def parameters(self, parameters):
-        if type(parameters) is not dict:
-            raise TypeError("The parameters element shall be a dictionary.")
-        else:
-
-            for key in parameters:
-                if not parameters[key].get('value'):
-                    raise KeyError (f"Parameter {key} does not have a designated value.")
-                else:
-                    value = parameters[key].get('value')
-                    if type(value) != float:
-                        raise ValueError (f"Parameter {key} does not have a number format type.")
-            
-            parameters['0'] = {'value': 0.}
-
-        self._parameters = parameters
-
-    @property
-    def transitions(self) -> dict[str, dict[str, dict[str, str]]]:
-        return self._transitions
-    
-    @transitions.setter
-    def transitions(self, transitions):
-        if type(transitions) is not dict:
-            raise TypeError("The transitions element shall be a dictionary.")
+    @model_representation.setter
+    def model_representation(self, model_representation):
+        if type(model_representation) is not dict:
+            raise TypeError("The model representation shall be a dictionary.")
         
-        self._transitions = transitions
+        def __check_modelrepresentation(d, loop = False, parent_key = None, middle_key = None):
+            for key, value in d.items():
+                if loop is False:
+                    parent_key = key
+
+                if key == 'joint_failures':
+                    if not isinstance(value, list):
+                        raise ValueError(f"Error: The value of 'joint_failures' should be a list. Found {type(value)} instead.")
+                    for idx, joint_failure in enumerate(value):
+                        if not isinstance(joint_failure, dict):
+                            raise ValueError(f"Error: Each item in 'joint_failures' should be a dict. Found {type(joint_failure)} at index {idx}.")                        
+                        if 'value' in joint_failure:
+                            if not isinstance(joint_failure['value'], float):
+                                print(f"Error: The 'value' in joint_failures[{idx}] is not a float. Attempting to convert...")
+                                try:
+                                    joint_failure['value'] = float(joint_failure['value'])
+                                    print(f"'value' in joint_failures[{idx}] successfully converted to float.")
+                                except ValueError:
+                                    raise ValueError(f"Error: 'value' in joint_failures[{idx}] cannot be converted to float.")
+                        else:
+                            raise ValueError(f"Error: Missing 'value' key in joint_failures[{idx}].")
+                        if 'symbol' not in joint_failure:
+                            raise ValueError(f"Error: Missing 'symbol' key in joint_failures[{idx}].")
+                elif key == 'state_modifiers':
+                    if isinstance(value, dict):
+                        if 'value' in value:
+                            if not isinstance(value['value'],float):
+                                print(f"Error: The value of 'value' in {key} is not a float. Attempting to convert...")
+                                try:
+                                    value['value'] = float(value['value'])
+                                    print(f"{value['value']} is now a float.")
+                                except:
+                                    raise ValueError(f"{value['value']} cannot be converted to float.")
+                elif isinstance(value, dict):
+                    if 'value' in value:
+                        if not isinstance(value['value'], float):
+                            print(f"Error: The value of 'value' in {key} is not a float. Attempting to convert...")
+                            try:
+                                value['value'] = float(value['value'])
+                                print(f"{value['value']} is now a float.")
+                            except:
+                                raise ValueError(f"{value['value']} cannot be converted to float.")
+                        if 'symbol' not in value:
+                            raise ValueError(f"Error: There is no 'symbol' parameter in {parent_key}:{middle_key}:{key}, and one has to be assigned.")
+                    __check_modelrepresentation(value, loop = True, parent_key = parent_key, middle_key = key)
+
+        __check_modelrepresentation(model_representation)
+
+        joint_failures = model_representation.get('joint_failures')
+        if joint_failures is None:
+            model_representation['joint_failures'] = []
+        
+        state_modifiers = model_representation.get('state_modifiers')
+        if state_modifiers is None:
+            model_representation['state_modifiers'] = {}
+
+        self._model_representation = model_representation
 
     @property
     def completeness(self):
@@ -265,7 +272,7 @@ class MarkovChain:
                     graph_data['edges'].append((
                         self.state_names[i], 
                         self.state_names[j], 
-                        self.__latextounicode(self.state_vectors[i][j]) #? LaTeXor unicode?
+                        self.state_vectors[i][j]
                     ))
         return graph_data
 
@@ -283,7 +290,7 @@ class MarkovChain:
         for i in range(self.size):
             for j in range(self.size):
                 if self.state_vectors[i][j] != '0': 
-                    prob = self.__latextounicode(self.state_vectors[i][j])
+                    prob = unicodeitplus.replace(self.state_vectors[i][j])
                     graph.add_edge(
                         self.state_names[i], 
                         self.state_names[j], 
@@ -298,24 +305,114 @@ class MarkovChain:
             dir_path = os.path.dirname(os.path.abspath(__file__))
             img_path = f'{dir_path}\\markov.svg'
             
-        graph.draw(img_path)    
+        graph.draw(img_path)
+
+    def __extract_parameters(self, data):
+        for key, value in data.items():
+            if key == 'joint_failures':
+                for joint_failure in value:
+                    if 'symbol' in joint_failure and 'value' in joint_failure:
+                        symbol = joint_failure['symbol']
+                        self.parameters[symbol] = {k: v for k, v in joint_failure.items() if k != 'symbol' and k != 'components'}
+            elif isinstance(value, dict):
+                if 'symbol' in value and 'value' in value:
+                    symbol = value['symbol']
+                    self.parameters[symbol] = {k: v for k, v in value.items() if k != 'symbol'}
+                self.__extract_parameters(value)
+
+    def __get_transitions(self):
+
+        for i in range(self.size):
+            local_state_transition = ['0'] * self.size
+            for j in range(self.size):
+                check_transition = self.__check_transition([i, j])
+                if check_transition[0]:
+                    if check_transition[1] == 'single':
+                        system_transiting = list(check_transition[2][0].keys())[0]
+                        from_state_st = check_transition[2][0][system_transiting]['from_state']
+                        to_state_st = check_transition[2][0][system_transiting]['to_state']
+                        local_state_transition[j] = self.model_representation[system_transiting][from_state_st][to_state_st]['symbol']
+                    elif check_transition[1] == 'multiple':
+                        system_transiting = 'joint_failures'
+                        joint_transition_index = check_transition[2]
+                        local_state_transition[j] = self.model_representation[system_transiting][joint_transition_index]['symbol']
+            
+            self.state_vectors.append(local_state_transition) 
+        
+        # Modifiers
+        modifiers = self.model_representation.get('state_modifiers')
+        if modifiers != {}:
+            for modifier, modifier_content in modifiers.items():
+                row_mod = modifier_content['modifies']['from']
+                col_mod = modifier_content['modifies']['to']
+                mod_value = modifier_content['value']
+
+                row_mod_idx = self.state_names.index(row_mod)
+                col_mod_idx = self.state_names.index(col_mod)
+
+                old_parameter = self.state_vectors[row_mod_idx][col_mod_idx]
+                new_parameter = modifier + old_parameter
+                self.state_vectors[row_mod_idx][col_mod_idx] = new_parameter
+                self.parameters[new_parameter] = {'value': self.parameters[old_parameter]['value']*mod_value}
+                if self.parameters[old_parameter].get('color') is not None:
+                    self.parameters[new_parameter]['color'] = self.parameters[old_parameter]['color']
+        
+    def __check_transition(self, indexes):
+        n_systems = len(self.systems_names)
+        i = indexes[0]
+        j = indexes[1]
+
+        transition_possible = True
+        transition_accomplished = []
+        transition_system_info = []
+        transition_result = []
+
+        for k in range(n_systems):
+            from_state = self.model_representation[self.systems_names[k]].get(self.state_matrix[i][k])
+            if from_state is not None:
+                to_state = from_state.get(self.state_matrix[j][k])
+                if to_state is not None:
+                    if to_state != {}:
+                        transition_accomplished.append(True)
+                        transition_system_info.append({self.systems_names[k]: {'from_state': self.state_matrix[i][k], 'to_state': self.state_matrix[j][k]}})
+                    else:
+                        transition_accomplished.append(False)
+                        transition_system_info.append(None)
+                else:
+                    transition_accomplished.append(False)
+                    transition_possible = False
+                    transition_system_info.append(None)
+        
+        if any(transition_accomplished) and transition_possible:
+            true_systems = [transition_system_info[index] for index, value in enumerate(transition_accomplished) if value]
+            if len(true_systems) == 1:
+                transition_result = [True, 'single', true_systems]
+            else:
+                joint_failures = self.model_representation.get('joint_failures')
+                if joint_failures != []:
+                    multiple_transition_bool, multiple_transition_index = self.__check_transitions_in_joint_failures(true_systems, joint_failures)
+                    if multiple_transition_bool:
+                        transition_result = [True, 'multiple', multiple_transition_index]
+                    else:
+                        transition_result = [False, '', []]
+                else:
+                    transition_result = [False, '', []]
+        else:
+            transition_result = [False, '', []]
+
+        return transition_result
+
+    def __check_transitions_in_joint_failures(self, transitions, joint_failures):
+        for index, failure in enumerate(joint_failures):
+            if all(failure['components'].get(generator) == {'from': states['from_state'], 'to': states['to_state']}
+                for transition in transitions
+                for generator, states in transition.items()):
+                return True, index
+        return False, None
 
     def __get_matrix(self):
 
-        self.state_matrix = [list(row[self.systems_names]) for _, row in self.data.iterrows()]
-
-        self.state_vectors = []
-        for index, state_transition in enumerate(self.state_transitions):
-            local_state = ['0'] * self.size
-            for transition in state_transition:
-                transition_index = self.state_names.index(transition)
-                col = 0
-                for from_state, to_state in zip(self.state_matrix[index], self.state_matrix[transition_index]):
-                    if from_state != to_state:
-                        if self.transitions[self.systems_names[col]][from_state]['To'] == to_state:
-                            local_state[transition_index] = self.transitions[self.systems_names[col]][from_state]['How']
-                    col += 1
-            self.state_vectors.append(local_state)
+        self.__get_transitions()
         
         matrix = numpy.zeros((self.size, self.size), dtype=float)
         
@@ -369,10 +466,12 @@ class MarkovChain:
         
         self.time = time
         if initial_conditions is None:
-            initial_conditions = numpy.array([1] + [0] * (self.size - 1))
-        self.initial_conditions = initial_conditions
+            if self.completeness:
+                initial_conditions = numpy.array([1] + [0] * (self.size - 2))
+            else:
+                initial_conditions = numpy.array([1] + [0] * (self.size - 1))
 
-        solution = odeintw.odeintw(self.__psys, self.initial_conditions, self.time, args=(self.matrix,))[-1]
+        solution = odeintw.odeintw(self.__psys, initial_conditions, self.time, args=(self.matrix,))[-1]
 
         if self.completeness:
             solution = numpy.append(solution, 1. - numpy.sum(solution))
@@ -388,10 +487,6 @@ class MarkovChain:
                 solution_dict['by_consequences'][consequence] += float(solution[index])
         
         return solution_dict
-    
-    @staticmethod
-    def __latextounicode(latex_text):
-        return unicodeitplus.replace(latex_text)
 
 
 if __name__ == '__main__':
@@ -400,43 +495,55 @@ if __name__ == '__main__':
     "State": ["1", "2", "3", "4"],
     "Active Generator": ["Operating", "Failed", "Operating", "Failed"],
     "Standby Generator": ["Standby", "Operating", "Failed", "Failed"],
-    "Consequence": ["Nominal Operation", "No Redundancy", "No Redundancy", "No Operation"],
-    "Transitions": ["2, 3", "4", "4", ""]
+    "Consequence": ["Nominal Operation", "No Redundancy", "No Redundancy", "No Operation"]
     }
-    
-    config = {
-        'parameters': {
-            '\\lambda_1': {'value': 0.01, 'color': '#FF1744'},
-            '\\lambda_2': {'value': 0.1, 'color': '#F57C00'},
-            '\\lambda_2^-': {'value': 0.001}
-        },
-        'transitions': {
-            'Active Generator': {
-                'Operating': {
-                    'To': 'Failed',
-                    'How': '\\lambda_1'
-                }
+ 
+    model_representation = {
+        'Active Generator': {
+            'Operating': {
+                'Failed': {'value': 0.01, 'color': '#FF1744', 'symbol':  '\\lambda_1'},
+                'Operating': {}
             },
-            'Standby Generator': {
-                'Standby': {
-                    'To': 'Failed',
-                    'How': '\\lambda_2^-'
-                },
-                'Operating': {
-                    'To': 'Failed',
-                    'How': '\\lambda_2'
-                }
+            'Failed': {
+                'Failed': {}
             }
+        },
+        'Standby Generator': {
+            'Standby': {
+                'Failed': {'value': 0.001, 'symbol': '\\lambda_2^-'},
+                'Operating': {},
+                'Standby': {}
+            },
+            'Operating': {
+                'Failed': {'value': 0.1, 'color': '#F57C00', 'symbol': '\\lambda_2'},
+                'Operating': {}
+            },
+            'Failed': {
+                'Failed': {}
+            }
+        },
+        'joint_failures': [
+            {
+                'components': {
+                    'Active Generator': {'from': 'Operating', 'to': 'Failed'},
+                    'Standby Generator': {'from': 'Standby', 'to': 'Failed'}
+                },
+                'value': 0.01,
+                'symbol': '\\lambda_1'
+            }
+        ],
+        'state_modifiers': {
+            'p': {'value': 0.1, 'modifies': {'from': '1', 'to': '4'}},
+            '(1-p)': {'value': 0.9, 'modifies': {'from': '1', 'to': '2'}}
         }
     }
-    #config = {'parameters': {'aa': {'uu':'oo'}}, 'transitions': {'aa': 'uu'}}
-    mc = MarkovChain(data, config, completeness=False, has_consequences=True)
-
+    
+    mc = MarkovChain(data, model_representation, completeness=True, has_consequences=True)
+    print(mc.get_symbolic_system())
     time = 30
+    solution = mc.get_results_by_consequences(time)
+    reliability = solution['Nominal Operation'] + solution['No Redundancy']
+    print(reliability)
 
-    solution = mc.get_results_by_states(time)
-    solution2 = mc.get_results_by_consequences(time)
-    print(solution)
-    print(solution2)
     #mc.draw()
-    print(mc.get_graph_data())
+    #print(mc.get_graph_data())
