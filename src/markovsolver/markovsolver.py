@@ -131,7 +131,15 @@ class MarkovChain:
                         if 'symbol' not in joint_failure:
                             raise ValueError(f"Error: Missing 'symbol' key in joint_failures[{idx}].")
                 elif key == 'state_modifiers':
-                    ... #! TODO
+                    if isinstance(value, dict):
+                        if 'value' in value:
+                            if not isinstance(value['value'],float):
+                                print(f"Error: The value of 'value' in {key} is not a float. Attempting to convert...")
+                                try:
+                                    value['value'] = float(value['value'])
+                                    print(f"{value['value']} is now a float.")
+                                except:
+                                    raise ValueError(f"{value['value']} cannot be converted to float.")
                 elif isinstance(value, dict):
                     if 'value' in value:
                         if not isinstance(value['value'], float):
