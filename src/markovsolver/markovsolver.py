@@ -2,7 +2,7 @@ import os
 import numpy
 import pandas
 import odeintw
-# Packages needed for MarkovChain.draw() function
+# Packages only needed for MarkovChain.draw() function (optional)
 import unicodeitplus
 import pygraphviz as pgv
 
@@ -62,9 +62,7 @@ class MarkovChain:
         self.state_names = self.data.iloc[:, 0].to_list()
         self.systems_names = self.data.columns.to_list()[1:last_data_col_index]
         self.state_matrix = [list(row[self.systems_names]) for _, row in self.data.iterrows()]
-        self.state_transitions = self.__get_transitions()
         self.state_vectors = []
-
         
         self.__get_matrix()
 
@@ -113,10 +111,31 @@ class MarkovChain:
             for key, value in d.items():
                 if loop is False:
                     parent_key = key
-                if isinstance(value, dict):
+
+                if key == 'joint_failures':
+                    if not isinstance(value, list):
+                        raise ValueError(f"Error: The value of 'joint_failures' should be a list. Found {type(value)} instead.")
+                    for idx, joint_failure in enumerate(value):
+                        if not isinstance(joint_failure, dict):
+                            raise ValueError(f"Error: Each item in 'joint_failures' should be a dict. Found {type(joint_failure)} at index {idx}.")                        
+                        if 'value' in joint_failure:
+                            if not isinstance(joint_failure['value'], float):
+                                print(f"Error: The 'value' in joint_failures[{idx}] is not a float. Attempting to convert...")
+                                try:
+                                    joint_failure['value'] = float(joint_failure['value'])
+                                    print(f"'value' in joint_failures[{idx}] successfully converted to float.")
+                                except ValueError:
+                                    raise ValueError(f"Error: 'value' in joint_failures[{idx}] cannot be converted to float.")
+                        else:
+                            raise ValueError(f"Error: Missing 'value' key in joint_failures[{idx}].")
+                        if 'symbol' not in joint_failure:
+                            raise ValueError(f"Error: Missing 'symbol' key in joint_failures[{idx}].")
+                elif key == 'state_modifiers':
+                    ... #! TODO
+                elif isinstance(value, dict):
                     if 'value' in value:
                         if not isinstance(value['value'], float):
-                            print(f"Error: The value of 'value' in {key} is not a float. Trying to convert it to float...")
+                            print(f"Error: The value of 'value' in {key} is not a float. Attempting to convert...")
                             try:
                                 value['value'] = float(value['value'])
                                 print(f"{value['value']} is now a float.")
@@ -127,6 +146,14 @@ class MarkovChain:
                     __check_modelrepresentation(value, loop = True, parent_key = parent_key, middle_key = key)
 
         __check_modelrepresentation(model_representation)
+
+        joint_failures = model_representation.get('joint_failures')
+        if joint_failures is None:
+            model_representation['joint_failures'] = []
+        
+        state_modifiers = model_representation.get('state_modifiers')
+        if state_modifiers is None:
+            model_representation['state_modifiers'] = {}
 
         self._model_representation = model_representation
 
@@ -273,26 +300,55 @@ class MarkovChain:
         graph.draw(img_path)
 
     def __extract_parameters(self, data):
-        for _, value in data.items():
-            if isinstance(value, dict):
+        for key, value in data.items():
+            if key == 'joint_failures':
+                for joint_failure in value:
+                    if 'symbol' in joint_failure and 'value' in joint_failure:
+                        symbol = joint_failure['symbol']
+                        self.parameters[symbol] = {k: v for k, v in joint_failure.items() if k != 'symbol' and k != 'components'}
+            elif isinstance(value, dict):
                 if 'symbol' in value and 'value' in value:
                     symbol = value['symbol']
                     self.parameters[symbol] = {k: v for k, v in value.items() if k != 'symbol'}
                 self.__extract_parameters(value)
 
     def __get_transitions(self):
-        transitions = []
-        n_states = len(self.state_matrix)
 
-        for i in range(n_states):
-            local_transitions = []
-            for j in range(n_states):
-                if i != j:
-                    if self.__check_transition([i, j]):
-                        local_transitions.append(self.state_names[j])
-            transitions.append(local_transitions)
-        return transitions
-    
+        for i in range(self.size):
+            local_state_transition = ['0'] * self.size
+            for j in range(self.size):
+                check_transition = self.__check_transition([i, j])
+                if check_transition[0]:
+                    if check_transition[1] == 'single':
+                        system_transiting = list(check_transition[2][0].keys())[0]
+                        from_state_st = check_transition[2][0][system_transiting]['from_state']
+                        to_state_st = check_transition[2][0][system_transiting]['to_state']
+                        local_state_transition[j] = self.model_representation[system_transiting][from_state_st][to_state_st]['symbol']
+                    elif check_transition[1] == 'multiple':
+                        system_transiting = 'joint_failures'
+                        joint_transition_index = check_transition[2]
+                        local_state_transition[j] = self.model_representation[system_transiting][joint_transition_index]['symbol']
+            
+            self.state_vectors.append(local_state_transition) 
+        
+        # Modifiers
+        modifiers = self.model_representation.get('state_modifiers')
+        if modifiers != {}:
+            for modifier, modifier_content in modifiers.items():
+                row_mod = modifier_content['modifies']['from']
+                col_mod = modifier_content['modifies']['to']
+                mod_value = modifier_content['value']
+
+                row_mod_idx = self.state_names.index(row_mod)
+                col_mod_idx = self.state_names.index(col_mod)
+
+                old_parameter = self.state_vectors[row_mod_idx][col_mod_idx]
+                new_parameter = modifier + old_parameter
+                self.state_vectors[row_mod_idx][col_mod_idx] = new_parameter
+                self.parameters[new_parameter] = {'value': self.parameters[old_parameter]['value']*mod_value}
+                if self.parameters[old_parameter].get('color') is not None:
+                    self.parameters[new_parameter]['color'] = self.parameters[old_parameter]['color']
+        
     def __check_transition(self, indexes):
         n_systems = len(self.systems_names)
         i = indexes[0]
@@ -300,6 +356,9 @@ class MarkovChain:
 
         transition_possible = True
         transition_accomplished = []
+        transition_system_info = []
+        transition_result = []
+
         for k in range(n_systems):
             from_state = self.model_representation[self.systems_names[k]].get(self.state_matrix[i][k])
             if from_state is not None:
@@ -307,31 +366,45 @@ class MarkovChain:
                 if to_state is not None:
                     if to_state != {}:
                         transition_accomplished.append(True)
+                        transition_system_info.append({self.systems_names[k]: {'from_state': self.state_matrix[i][k], 'to_state': self.state_matrix[j][k]}})
                     else:
                         transition_accomplished.append(False)
+                        transition_system_info.append(None)
                 else:
                     transition_accomplished.append(False)
                     transition_possible = False
-        # The following reduction of transition_accomplished does not consider simultaneous failures.
-        # This has to be developed with some more logic behind.        
-        transition_accomplished = transition_accomplished.count(True) == 1 and transition_possible
+                    transition_system_info.append(None)
+        
+        if any(transition_accomplished) and transition_possible:
+            true_systems = [transition_system_info[index] for index, value in enumerate(transition_accomplished) if value]
+            if len(true_systems) == 1:
+                transition_result = [True, 'single', true_systems]
+            else:
+                joint_failures = self.model_representation.get('joint_failures')
+                if joint_failures != []:
+                    multiple_transition_bool, multiple_transition_index = self.__check_transitions_in_joint_failures(true_systems, joint_failures)
+                    if multiple_transition_bool:
+                        transition_result = [True, 'multiple', multiple_transition_index]
+                    else:
+                        transition_result = [False, '', []]
+                else:
+                    transition_result = [False, '', []]
+        else:
+            transition_result = [False, '', []]
 
-        return transition_accomplished
+        return transition_result
+
+    def __check_transitions_in_joint_failures(self, transitions, joint_failures):
+        for index, failure in enumerate(joint_failures):
+            if all(failure['components'].get(generator) == {'from': states['from_state'], 'to': states['to_state']}
+                for transition in transitions
+                for generator, states in transition.items()):
+                return True, index
+        return False, None
 
     def __get_matrix(self):
 
-        for index, state_transition in enumerate(self.state_transitions):
-            local_state = ['0'] * self.size
-            for transition in state_transition:
-                transition_index = self.state_names.index(transition)
-                col = 0
-                for from_state, to_state in zip(self.state_matrix[index], self.state_matrix[transition_index]):
-                    if from_state != to_state:
-                        transition_result = self.model_representation[self.systems_names[col]][from_state].get(to_state)
-                        if transition_result is not None and transition_result != {}:
-                            local_state[transition_index] = transition_result['symbol']
-                    col += 1
-            self.state_vectors.append(local_state)
+        self.__get_transitions()
         
         matrix = numpy.zeros((self.size, self.size), dtype=float)
         
@@ -383,10 +456,14 @@ class MarkovChain:
     
     def __solve(self, time, initial_conditions = None):
         
+        self.time = time
         if initial_conditions is None:
-            initial_conditions = numpy.array([1] + [0] * (self.size - 1))
+            if self.completeness:
+                initial_conditions = numpy.array([1] + [0] * (self.size - 2))
+            else:
+                initial_conditions = numpy.array([1] + [0] * (self.size - 1))
 
-        solution = odeintw.odeintw(self.__psys, initial_conditions, time, args=(self.matrix,))[-1]
+        solution = odeintw.odeintw(self.__psys, initial_conditions, self.time, args=(self.matrix,))[-1]
 
         if self.completeness:
             solution = numpy.append(solution, 1. - numpy.sum(solution))
@@ -436,17 +513,29 @@ if __name__ == '__main__':
             'Failed': {
                 'Failed': {}
             }
+        },
+        'joint_failures': [
+            {
+                'components': {
+                    'Active Generator': {'from': 'Operating', 'to': 'Failed'},
+                    'Standby Generator': {'from': 'Standby', 'to': 'Failed'}
+                },
+                'value': 0.01,
+                'symbol': '\\lambda_1'
+            }
+        ],
+        'state_modifiers': {
+            'p': {'value': 0.1, 'modifies': {'from': '1', 'to': '4'}},
+            '(1-p)': {'value': 0.9, 'modifies': {'from': '1', 'to': '2'}}
         }
     }
     
-    mc = MarkovChain(data, model_representation, completeness=False, has_consequences=True)
+    mc = MarkovChain(data, model_representation, completeness=True, has_consequences=True)
+    print(mc.get_symbolic_system())
     time = 30
+    solution = mc.get_results_by_consequences(time)
+    reliability = solution['Nominal Operation'] + solution['No Redundancy']
+    print(reliability)
 
-    solution = mc.get_results_by_states(time)
-    solution2 = mc.get_results_by_consequences(time)
-    print(solution2['Nominal Operation'] + solution2['No Redundancy'])
-    print(solution)
-    print(solution2)
     #mc.draw()
-    print(mc.get_graph_data())
-    
+    #print(mc.get_graph_data())
