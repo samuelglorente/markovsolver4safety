@@ -2,9 +2,6 @@ import os
 import numpy
 import pandas
 import odeintw
-# Packages only needed for MarkovChain.draw() function (optional)
-import unicodeitplus
-import pygraphviz as pgv
 
 
 class MarkovChain:
@@ -280,6 +277,16 @@ class MarkovChain:
         """
         Draw the Markov Chain
         """
+
+        try:
+            import unicodeitplus
+            import pygraphviz as pgv
+        except ImportError:
+            raise ImportError(
+                "To use the draw feature you need to install the optional dependencies 'pygraphviz' and 'unicodeitplus."
+                "You can do that by executing: pip install markovsolver4safety[drawing_feature]"
+            )
+         
         graph = pgv.AGraph(directed = True, strict = False, rankdir="LR")
         
         # Draw the nodes
