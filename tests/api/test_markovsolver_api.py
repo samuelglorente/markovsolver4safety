@@ -60,12 +60,15 @@ if __name__ == '__main__':
         }
     }
     
+    time = 30;
     
-    files = [
-        ('data', ('data', json.dumps(data), 'application/json')),
-        ('model_representation', ('model_representation', json.dumps(model_representation), 'application/json')),
-        ]
-
+    solution = ['Nominal Operation', 'No Redundancy']
+        
+    model = {'data': data, 
+             'model_representation': model_representation,
+             'time': time, 
+             'solution_of_interest': solution}
+    
     url = "http://127.0.0.1:5000/markovsolver"
-    r = requests.post(url, files=files)
+    r = requests.post(url, json=model)
     print(str(r.content, 'utf-8'))

@@ -19,18 +19,27 @@ def hello_world():
 
 @app.route("/markovsolver",methods=['GET','POST'])
 def markovsolver():
-    
+    '''
     posted_data = json.load(request.files['data'])
     posted_model_representation = json.load(request.files['model_representation'])
-     
+     '''
+    
+    print(request.json)
+    
+    posted_data = request.json['data']
+    posted_model_representation = request.json['model_representation']
+    
     print(posted_data)
     print(posted_model_representation)
     
     mc = MarkovChain(posted_data, posted_model_representation, completeness=True, has_consequences=True)
     print(mc.get_symbolic_system())
-    time = 30
+    time = request.json['time']
     solution = mc.get_results_by_consequences(time)
-    reliability = solution['Nominal Operation'] + solution['No Redundancy']
+    
+    reliability = 0
+    for k in request.json['solution_of_interest']:
+        reliability = reliability + solution[k] 
     print(reliability)
     
-    return "<p>This is Markov tool!</p>"
+    return "Reliability = "+reliability.__str__()
