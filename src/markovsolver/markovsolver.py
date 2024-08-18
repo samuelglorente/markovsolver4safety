@@ -50,14 +50,21 @@ class MarkovChain:
         self.completeness = completeness
         self.has_consequences = has_consequences
 
+        '''
         if self.has_consequences:
+            
             last_data_col_index = -1
             self.consequences = self.data.iloc[:, last_data_col_index].to_list()
         else:
             last_data_col_index = len(self.data)
         
+        
         self.state_names = self.data.iloc[:, 0].to_list()
         self.systems_names = self.data.columns.to_list()[1:last_data_col_index]
+        '''
+        
+        self.__parse_data(self.data)
+        
         self.state_matrix = [list(row[self.systems_names]) for _, row in self.data.iterrows()]
         self.state_vectors = []
         
@@ -313,6 +320,28 @@ class MarkovChain:
             img_path = f'{dir_path}\\markov.svg'
             
         graph.draw(img_path)
+        
+    def __parse_data(self,data):
+        ''' data is a dict with items
+        data ={
+            "State":[state_names],
+            "Consequence":[consequences],
+            "Sys1":[],
+            "Sys2":[],
+            ...
+            }
+        This function extracts the state_names and consequences
+        Everything else is a system
+        '''
+        self.systems_names = []
+        for key, value in data.items():
+            if key == 'Consequence':
+                self.consequences = value.to_list()
+            elif key == 'State':
+                self.state_names = value.to_list()
+            else:
+                self.systems_names.append(key)
+
 
     def __extract_parameters(self, data):
         for key, value in data.items():
