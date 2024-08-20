@@ -37,9 +37,12 @@ def markovsolver():
     time = request.json['time']
     solution = mc.get_results_by_consequences(time)
     
-    reliability = 0
+    reliability = {}
+    reliability_else = 1;
     for k in request.json['solution_of_interest']:
-        reliability = reliability + solution[k] 
+        reliability[k] = solution[k]
+        reliability_else = reliability_else - solution[k]
+    reliability["else"] = reliability_else
     print(reliability)
     
-    return "Reliability = "+reliability.__str__()
+    return reliability.__str__()
