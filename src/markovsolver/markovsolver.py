@@ -145,7 +145,7 @@ class MarkovChain:
     \left[\begin{array}{c}dP_{1}(t)/dt\\dP_{2}(t)/dt\\dP_{3}(t)/dt\end{array}\right]=\begin{bmatrix}-((1-p)\lambda_1+\lambda_2^-+p\lambda_1)&0&0\\(1-p)\lambda_1&-\lambda_2&0\\\lambda_2^-&0&-\lambda_1\end{bmatrix}\cdot\left[\begin{array}{c}P_{1}(t)\\P_{2}(t)\\P_{3}(t)\end{array}\right]\newline P_{4}(t) = 1 - \sum_{i=1}^{3}P_{i}(t)
 
     ** Get graph data **
-    >>> print(mc.get_graph_data)
+    >>> print(mc.get_graph_data())
     {'nodes': ['1', '2', '3', '4'], 'edges': [('1', '2', '(1-p)\\lambda_1'), ('1', '3', '\\lambda_2^-'), ('1', '4', 'p\\lambda_1'), ('2', '4', '\\lambda_2'), ('3', '4', '\\lambda_1')]}
 
     ** Draw the Markov Chain in the directory of execution (as markov.svg) **
@@ -155,11 +155,11 @@ class MarkovChain:
     >>> mc.draw(img_path = 'path/to/markov_chain.png')
 
     ** Solve Markov Chain and get the info for each state ** 
-    >>> print(mc.get_results_by_states(30))
+    >>> print(mc.get_results_by_states(30)) # Time equal to 30 hours
     {'1': 0.7189237345889834, '2': 0.06766551029955292, '3': 0.021894487072743454, '4': 0.19151626803872024}
 
     ** Solve Markov Chain and get the info for each consequence **
-    >>> print(mc.get_results_by_consequences(30))
+    >>> print(mc.get_results_by_consequences(30)) # Time equal to 30 hours
     {'Nominal Operation': 0.7189237345889834, 'No Redundancy': 0.08955999737229638, 'No Operation': 0.19151626803872024}
 
     Raises
