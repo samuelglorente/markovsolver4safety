@@ -14,8 +14,8 @@ app = Flask(__name__)
 port = 5000;
     
 @app.route("/")
-def hello_world():
-    return "<p>Hello, World!</p>"
+def check_connection():
+    return "OK"
 
 @app.route("/markovsolver",methods=['GET','POST'])
 def markovsolver():
