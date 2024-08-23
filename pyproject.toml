@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "markovsolver4safety"
+dynamic = ['version']
+dependencies = [
+    "lark==1.1.9",
+    "numpy==2.0.1",
+    "odeintw==1.0.2",
+    "pandas==2.2.2",
+    "python-dateutil==2.9.0.post0",
+    "pytz==2024.1",
+    "scipy==1.14.0",
+    "six==1.16.0",
+    "tzdata==2024.1",
+]
+requires-python = ">= 3.10"
+authors = [
+  {name = "Samuel Garcia Lorente", email = "sglorente@proton.me"}
+]
+description = "Supports the Markov analysis used as safety substantiation presented in ARP4761A/ED-135."
+readme = "README.md"
+license = {file = "LICENSE"}
+keywords = ["safety", "RAMS", "ARP4761A", "ED135", "Markov"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python"
+]
+
+[project.optional-dependencies]
+drawing_feature = [
+    "unicodeitplus==0.3.1",
+    "pygraphviz==1.13"
+]
+
+[project.urls]
+Repository = "https://github.com/samuelglorente/markovsolver4safety.git"
+Issues = "https://github.com/samuelglorente/markovsolver4safety/issues"
+
+[tool.hatch.version]
+path = "src/markovsolver/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/markovsolver"]
