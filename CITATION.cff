@@ -1,0 +1,23 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: Markov Solver for Safety
+message: 'If you use this software, please cite it as below.'
+type: software
+authors:
+  - given-names: Samuel
+    family-names: G. Lorente
+    email: sglorente@proton.me
+repository-code: 'https://github.com/samuelglorente/markovsolver4safety'
+abstract: >-
+  Supports the Markov analysis used as safety substantiation
+  presented in ARP4761A/ED-135.
+keywords:
+  - ARP4761
+  - safety
+  - Markov
+license: GPL-3.0
+commit: 1809d54cae51ffbe7108011462669c4db3d8160c
+version: 0.1.0
+date-released: '2024-08-21'
