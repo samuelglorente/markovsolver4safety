@@ -141,13 +141,13 @@ $$
 
 ## Release History
 
-* 1.0.0
+* 0.1.0
     * First release
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Roadmap
-- [ ] Add API support for ATICA (Capella plugin developed by ANZEN Engineering)
+- [ ] Create corresponding classes for modelling the systems
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
