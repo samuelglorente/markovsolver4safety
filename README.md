@@ -23,6 +23,15 @@ ARP4761 recommends Markov analysis for situations where system behaviors are too
 
 For installing Markov Solver for Safety, just run any of the following commands:
 
+### Atica feature: Access API for Capella with Docker
+
+```bash
+docker build -t markov-app .
+docker run --rm -p 5000:5000 markov-app
+```
+
+Test the API is working in localhost:5000/
+
 ### Basic installation
 
 ```bash
